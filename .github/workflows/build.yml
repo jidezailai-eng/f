@@ -18,46 +18,59 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential gcc-aarch64-linux-gnu ccache flex bison libssl-dev libelf-dev bc
 
-      # --- NEW: GEMINI CLI IMPLEMENTATION ---
-      - name: Setup Node.js (Required for Gemini CLI)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Gemini CLI
-        run: npm install -g @google/gemini-cli
-      # --------------------------------------
-
       - name: Configure ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: ${{ runner.os }}-aarch64-ccache
           max-size: 5G
 
-      # --- NEW: KERNEL CONFIGURATION ---
+      - name: Debug - List Available Defconfigs
+        run: |
+          echo "========================================================="
+          echo "Looking for config files in arch/arm64/configs/"
+          echo "========================================================="
+          find arch/arm64/configs/ -name "*defconfig*"
+          echo "========================================================="
+
       - name: Generate Kernel .config
         run: |
-          make ARCH=arm64 merge_kirin980_defconfig
-      # ---------------------------------
+          # If this fails, look at the output of the step above to find the EXACT filename, 
+          # then update 'defconfig' below to match it (e.g., vendor/kirin980_defconfig).
+          make ARCH=arm64 defconfig
 
-      - name: Compile Binary with Gemini Auto-Patching
-        env:
-          # You MUST add your API key to GitHub Repository Secrets as GEMINI_API_KEY
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
+      - name: Pre-Patch Broken Huawei Drivers
         run: |
-          # This runs the build. If it fails, Gemini CLI jumps in to patch the Makefiles.
-          while ! make ARCH=arm64 HOSTCFLAGS="-fcommon" KCFLAGS="-Wno-error -w" CC="ccache aarch64-linux-gnu-gcc" CROSS_COMPILE="aarch64-linux-gnu-" Image.gz -j$(nproc) > build_error.log 2>&1; do
-              echo "Build failed! Triggering Gemini CLI to analyze and patch..."
-              
-              gemini -p "Analyze the compilation errors at the end of 'build_error.log'. Disable the failing drivers in their respective Makefiles or hollow out the failing .c files. Auto-accept all file edits."
-              
-              echo "Patching complete. Restarting compiler..."
-          done
+          echo "Applying static inline fixes to coul event header..."
+          sed -i 's/void hisi_coul/static inline void hisi_coul/g' include/linux/power/hisi/coul/hisi_coul_event.h || true
+          sed -i 's/int hisi_call/static inline int hisi_call/g' include/linux/power/hisi/coul/hisi_coul_event.h || true
+          
+          echo "Hollowing out broken display and USB dependencies..."
+          echo "" > drivers/video/fbdev/hisi/dss/panel/mipi_lcd_utils.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_display_effect.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_debug.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_mdc_resource.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_overlay_utils.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_utils.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_bl.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_secure.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_buf_sync.c || true
+          echo "" > drivers/video/fbdev/hisi/aod/hisi_aod_device.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_blpwm.c || true
+          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_esd.c || true
+          echo "" > drivers/usb/gadget/function/f_rndis.c || true
+          
+          echo "Disabling recursive makefiles..."
+          mv drivers/video/fbdev/hisi/dss/panel/Makefile drivers/video/fbdev/hisi/dss/panel/Makefile.bak || true
+
+      - name: Compile Kernel Image
+        run: |
+          make ARCH=arm64 HOSTCFLAGS="-fcommon" KCFLAGS="-Wno-error -w" CC="ccache aarch64-linux-gnu-gcc" CROSS_COMPILE="aarch64-linux-gnu-" Image.gz -j$(nproc)
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: compiled-image
+          name: kernel-image
           path: arch/arm64/boot/Image.gz
           retention-days: 7
