@@ -40,9 +40,12 @@ jobs:
         run: |
           make ARCH=arm64 Mate20_kirin980_defconfig
           
-          # Disable Stack Protector to allow compilation with modern GCC
+          # Disable Stack Protector (Already implemented)
           sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' .config
           sed -i 's/CONFIG_CC_STACKPROTECTOR=y/# CONFIG_CC_STACKPROTECTOR is not set/g' .config
+          
+          # NEW: Disable GCC Plugins to prevent missing .so errors with modern toolchains
+          sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' .config
           
           # Force the configuration to apply the changes
           make ARCH=arm64 olddefconfig
