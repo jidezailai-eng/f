@@ -37,9 +37,7 @@ jobs:
       # --- NEW: KERNEL CONFIGURATION ---
       - name: Generate Kernel .config
         run: |
-          # Replace 'YOUR_DEFCONFIG_NAME' with the actual config for your device
-          # (e.g., kirin980_defconfig, vendor/hisi_defconfig, etc.)
-          make ARCH=arm64 YOUR_DEFCONFIG_NAME
+          make ARCH=arm64 merge_kirin980_defconfig
       # ---------------------------------
 
       - name: Compile Binary with Gemini Auto-Patching
