@@ -1,0 +1,45 @@
+name: ARM64 Build Pipeline
+
+# Trigger the workflow on pushes to main, or manually via the GitHub UI
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch: 
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04 # Using a modern Ubuntu runner
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Install toolchain and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu ccache flex bison libssl-dev libelf-dev bc
+
+      - name: Configure ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-aarch64-ccache
+          max-size: 5G
+
+      - name: Compile Binary
+        run: |
+          # Swap this out with your exact make command
+          make ARCH=arm64 \
+               HOSTCFLAGS="-fcommon" \
+               KCFLAGS="-Wno-error" \
+               CC="ccache aarch64-linux-gnu-gcc -Wno-error -Wno-maybe-uninitialized -Wno-incompatible-pointer-types" \
+               CROSS_COMPILE="aarch64-linux-gnu-" \
+               Image.gz -j$(nproc)
+
+      - name: Upload Artifact
+        # This grabs the finished binary so you can download it from the Actions tab
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: compiled-image
+          path: arch/arm64/boot/Image.gz
+          retention-days: 7
