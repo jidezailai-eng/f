@@ -24,44 +24,22 @@ jobs:
           key: ${{ runner.os }}-aarch64-ccache
           max-size: 5G
 
-      - name: Debug - List Available Defconfigs
+      - name: Pre-Patch Broken Huawei Drivers (The Big Hammer)
         run: |
-          echo "========================================================="
-          echo "Looking for config files in arch/arm64/configs/"
-          echo "========================================================="
-          find arch/arm64/configs/ -name "*defconfig*"
-          echo "========================================================="
-
-      - name: Generate Kernel .config
-        run: |
-          # If this fails, look at the output of the step above to find the EXACT filename, 
-          # then update 'defconfig' below to match it (e.g., vendor/kirin980_defconfig).
-          make ARCH=arm64 defconfig
-
-      - name: Pre-Patch Broken Huawei Drivers
-        run: |
-          echo "Applying static inline fixes to coul event header..."
+          echo "Applying static inline fixes to coul event header to fix linker collisions..."
           sed -i 's/void hisi_coul/static inline void hisi_coul/g' include/linux/power/hisi/coul/hisi_coul_event.h || true
           sed -i 's/int hisi_call/static inline int hisi_call/g' include/linux/power/hisi/coul/hisi_coul_event.h || true
           
-          echo "Hollowing out broken display and USB dependencies..."
-          echo "" > drivers/video/fbdev/hisi/dss/panel/mipi_lcd_utils.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_display_effect.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_debug.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_mdc_resource.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_overlay_utils.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_utils.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_bl.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_secure.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_buf_sync.c || true
-          echo "" > drivers/video/fbdev/hisi/aod/hisi_aod_device.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_blpwm.c || true
-          echo "" > drivers/video/fbdev/hisi/dss/hisi_fb_esd.c || true
-          echo "" > drivers/usb/gadget/function/f_rndis.c || true
+          echo "Hollowing out ALL Kirin display drivers to bypass missing lcd_kit headers..."
+          find drivers/video/fbdev/hisi/ -type f -name "*.c" -exec sh -c 'echo "" > "$1"' _ {} \; || true
           
-          echo "Disabling recursive makefiles..."
-          mv drivers/video/fbdev/hisi/dss/panel/Makefile drivers/video/fbdev/hisi/dss/panel/Makefile.bak || true
+          echo "Hollowing out broken USB network gadget..."
+          echo "" > drivers/usb/gadget/function/f_rndis.c || true
+
+      - name: Generate Kernel .config
+        run: |
+          # Change this to P30_kirin980_defconfig if you are targeting the P30!
+          make ARCH=arm64 Mate20_kirin980_defconfig
 
       - name: Compile Kernel Image
         run: |
