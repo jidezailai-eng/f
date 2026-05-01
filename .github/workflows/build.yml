@@ -26,16 +26,16 @@ jobs:
 
       - name: Strip Hardcoded Huawei Compiler Flags
         run: |
-          echo "Hunting down and removing hardcoded plugin flags from Makefiles..."
+          echo "Aggressively stripping ALL plugin and plugin-arg flags from Makefiles..."
           
-          # Find any Makefile that forces the loading of randomize_layout.so, cfi.so, or structleak.so
-          # and delete the -fplugin argument from the CFLAGS.
-          find . -name "Makefile*" -exec sed -i 's/-fplugin=[^ ]*cfi.so//g' {} +
-          find . -name "Makefile*" -exec sed -i 's/-fplugin=[^ ]*randomize_layout.so//g' {} +
-          find . -name "Makefile*" -exec sed -i 's/-fplugin=[^ ]*structleak.so//g' {} +
+          # Delete any argument starting with -fplugin or -fplugin-arg- across the entire tree
+          find . -type f -name "Makefile*" -exec sed -i 's/-fplugin[^ ]*//g' {} + || true
+          find . -type f -name "Makefile*" -exec sed -i 's/-fplugin-arg-[^ ]*//g' {} + || true
           
-          # Also scrub the core kernel Makefile just in case it is injected globally
-          sed -i 's/-fplugin=[^ ]*\.so//g' Makefile
+          # Scrub the main root Makefile just to be safe
+          sed -i 's/-fplugin[^ ]*//g' Makefile || true
+          sed -i 's/-fplugin-arg-[^ ]*//g' Makefile || true
+
       - name: Pre-Patch Broken Huawei Drivers (The Big Hammer)
         run: |
           echo "Applying static inline fixes to coul event header to fix linker collisions..."
