@@ -1,4 +1,4 @@
-name: ARM64 Build Pipeline
+name: ARM64 Kirin 980 Build Pipeline
 
 on:
   push:
@@ -24,6 +24,22 @@ jobs:
           key: ${{ runner.os }}-aarch64-ccache
           max-size: 5G
 
+      - name: Create Dummy GCC Plugins (Bypass Huawei Toolchain Hardcodes)
+        run: |
+          echo "Creating empty plugins to bypass missing Android 4.9 toolchain dependencies..."
+          
+          # 1. Create the exact directory structure the Huawei compiler expects
+          mkdir -p ./../../prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/libexec/gcc/aarch64-linux-android/4.9.x/
+          
+          # 2. Create a literal empty C file and compile it into a shared object plugin
+          echo "int plugin_is_GPL_compatible;" > dummy_plugin.c
+          gcc -shared -fPIC -o dummy.so dummy_plugin.c
+          
+          # 3. Copy the dummy file to all the locations the compiler is crying about
+          cp dummy.so ./../../prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/libexec/gcc/aarch64-linux-android/4.9.x/cfi.so
+          cp dummy.so ./../../prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/libexec/gcc/aarch64-linux-android/4.9.x/randomize_layout.so
+          cp dummy.so ./../../prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/libexec/gcc/aarch64-linux-android/4.9.x/structleak.so
+
       - name: Pre-Patch Broken Huawei Drivers (The Big Hammer)
         run: |
           echo "Applying static inline fixes to coul event header to fix linker collisions..."
@@ -36,14 +52,15 @@ jobs:
           echo "Hollowing out broken USB network gadget..."
           echo "" > drivers/usb/gadget/function/f_rndis.c || true
           
-          echo "Disabling recursive makefiles..."
+          echo "Disabling recursive makefiles in panel directory..."
           mv drivers/video/fbdev/hisi/dss/panel/Makefile drivers/video/fbdev/hisi/dss/panel/Makefile.bak || true
 
       - name: Generate Kernel .config
         run: |
+          # Generate the default configuration
           make ARCH=arm64 Mate20_kirin980_defconfig
           
-          echo "Stripping GCC plugin and security flags from the generated config..."
+          echo "Stripping compiler-specific security flags from the generated config..."
           sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' .config
           sed -i 's/CONFIG_CC_STACKPROTECTOR=y/# CONFIG_CC_STACKPROTECTOR is not set/g' .config
           sed -i 's/CONFIG_CFI_CLANG=y/# CONFIG_CFI_CLANG is not set/g' .config
@@ -52,11 +69,11 @@ jobs:
           sed -i 's/CONFIG_SHADOW_CALL_STACK=y/# CONFIG_SHADOW_CALL_STACK is not set/g' .config
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' .config
           
+          # Apply the configuration changes
           make ARCH=arm64 olddefconfig
 
       - name: Compile Kernel Image
         run: |
-          # Pass DISABLE_GCC_PLUGINS directly to make to override any stubborn Huawei dependencies
           make ARCH=arm64 \
                HOSTCFLAGS="-fcommon" \
                KCFLAGS="-Wno-error -w" \
